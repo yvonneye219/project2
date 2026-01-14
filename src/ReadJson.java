@@ -1,128 +1,113 @@
+import javax.imageio.ImageIO;
+import javax.swing.*;
+import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.io.BufferedReader;
-import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
-import org.json.simple.parser.ParseException;
-
-import javax.swing.*;
-import java.awt.*;
 
 public class ReadJson {
 
-    public static void main(String args[]) throws Exception {
-        JSONObject file = new JSONObject();
-        file.put("Full Name", "Ritu Sharma");
-        file.put("Roll No.", 1704310046);
-        file.put("Tution Fees", 65400);
-
-        System.out.print(file.get("Tution Fees"));
-
-        ReadJson readingIsWhat = new ReadJson();
-
-        SwingUtilities.invokeLater(() -> {
-            PokemonViewer viewer = readingIsWhat.new PokemonViewer();
-            viewer.setVisible(true);
-        });
+    public static void main(String[] args) {
+        ReadJson app = new ReadJson();
+        SwingUtilities.invokeLater(() -> app.new Viewer().setVisible(true));
     }
 
-    public ReadJson() {}
 
-    public JSONObject pull(String pokemonName) throws Exception {
-        String output;
-        String totalJson = "";
+    public JSONObject getCountryObject(String countryName) throws Exception {
+        String encodedName = URLEncoder.encode(countryName.trim(), "UTF-8");
 
-        URL url = new URL("https://pokeapi.co/api/v2/pokemon/" + pokemonName.toLowerCase());
+        URL url = new URL("https://restcountries.com/v3.1/name/" + encodedName);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("GET");
         conn.setRequestProperty("Accept", "application/json");
 
-        if (conn.getResponseCode() != 200)
-            throw new RuntimeException("HTTP " + conn.getResponseCode());
-
-        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-
-        while ((output = br.readLine()) != null) {
-            totalJson += output;
+        if (conn.getResponseCode() != 200) {
+            throw new RuntimeException("Country not found");
         }
 
+        StringBuilder jsonText = new StringBuilder();
+        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        String line;
+        while ((line = br.readLine()) != null) {
+            jsonText.append(line);
+        }
         conn.disconnect();
 
-        JSONParser parser = new JSONParser();
-        return (JSONObject) parser.parse(totalJson);
+        JSONArray arr = (JSONArray) new JSONParser().parse(jsonText.toString());
+        return (JSONObject) arr.get(0);
     }
 
-    public class PokemonViewer extends JFrame {
+    public String getFlagPngUrl(JSONObject countryObj) {
+        JSONObject flags = (JSONObject) countryObj.get("flags");
+        return (String) flags.get("png");
+    }
 
-        private JTextField nameField;
-        private JTextArea abilitiesArea;
-        private JTextField searchField;
-        private JButton searchButton;
+    public ImageIcon downloadFlag(String pngUrl) throws Exception {
+        URL url = new URL(pngUrl);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("GET");
 
-        public PokemonViewer() {
-            setTitle("Pokemon Viewer");
+        InputStream in = conn.getInputStream();
+        BufferedImage img = ImageIO.read(in);
+        conn.disconnect();
+
+        return new ImageIcon(img);
+    }
+
+    public class Viewer extends JFrame {
+
+        JTextField input;
+        JButton search;
+        JLabel imageLabel;
+
+        public Viewer() {
+            setTitle("Rest Countries Flag Viewer");
+            setSize(500, 350);
             setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            setSize(450, 350);
             setLocationRelativeTo(null);
-
             setLayout(new BorderLayout(10, 10));
 
-            JPanel topPanel = new JPanel(new GridLayout(2, 1, 5, 5));
+            imageLabel = new JLabel(
+                    "Type a country name (Korea, Brazil, etc.)",
+                    SwingConstants.CENTER
+            );
+            add(imageLabel, BorderLayout.CENTER);
 
-            nameField = new JTextField();
-            nameField.setEditable(false);
-            nameField.setBorder(BorderFactory.createTitledBorder("Name"));
+            JPanel bottom = new JPanel(new BorderLayout(5, 5));
+            input = new JTextField();
+            input.setBorder(BorderFactory.createTitledBorder("Country Name"));
+            bottom.add(input, BorderLayout.CENTER);
 
-            abilitiesArea = new JTextArea(3, 20);
-            abilitiesArea.setEditable(false);
-            abilitiesArea.setLineWrap(true);
-            abilitiesArea.setWrapStyleWord(true);
-            JScrollPane abilitiesScroll = new JScrollPane(abilitiesArea);
-            abilitiesScroll.setBorder(BorderFactory.createTitledBorder("Abilities"));
+            search = new JButton("Search");
+            bottom.add(search, BorderLayout.EAST);
+            add(bottom, BorderLayout.SOUTH);
 
-            topPanel.add(nameField);
-            topPanel.add(abilitiesScroll);
-
-            add(topPanel, BorderLayout.NORTH);
-
-            add(new JPanel(), BorderLayout.CENTER);
-
-            JPanel bottomPanel = new JPanel(new BorderLayout(5, 5));
-
-            searchField = new JTextField();
-            searchField.setBorder(BorderFactory.createTitledBorder("Pokemon Name"));
-            bottomPanel.add(searchField, BorderLayout.CENTER);
-
-            searchButton = new JButton("Search");
-            bottomPanel.add(searchButton, BorderLayout.EAST);
-
-            add(bottomPanel, BorderLayout.SOUTH);
-
-            searchButton.addActionListener(event -> {
+            search.addActionListener(e -> {
                 try {
-                    String pokemonName = searchField.getText().trim();
-                    JSONObject jsonObject = ReadJson.this.pull(pokemonName);
+                    JSONObject country = getCountryObject(input.getText());
+                    String pngUrl = getFlagPngUrl(country);
+                    ImageIcon flag = downloadFlag(pngUrl);
 
-                    String name = (String) jsonObject.get("name");
-                    nameField.setText(name);
+                    imageLabel.setIcon(flag);
+                    imageLabel.setText("");
 
-                    JSONArray abilities = (JSONArray) jsonObject.get("abilities");
-                    StringBuilder sb = new StringBuilder();
-                    for (int i = 0; i < abilities.size(); i++) {
-                        JSONObject abilityObject = (JSONObject) abilities.get(i);
-                        JSONObject abilityInfo = (JSONObject) abilityObject.get("ability");
-                        sb.append("-").append(abilityInfo.get("name")).append("\n");
-                    }
-
-                    abilitiesArea.setText(sb.toString());
                 } catch (Exception ex) {
-                    throw new RuntimeException(ex);
+                    imageLabel.setIcon(null);
+                    imageLabel.setText("Error: " + ex.getMessage());
                 }
             });
         }
     }
 }
+
+//AI for cartoon: https://app.kira.art/generator/36fa51fb-91c4-47cc-92d8-3262a78da6de
+
+
