@@ -20,7 +20,6 @@ public class ReadJson {
         SwingUtilities.invokeLater(() -> app.new Viewer().setVisible(true));
     }
 
-
     public JSONObject getCountryObject(String countryName) throws Exception {
         String encodedName = URLEncoder.encode(countryName.trim(), "UTF-8");
 
@@ -50,6 +49,21 @@ public class ReadJson {
         return (String) flags.get("png");
     }
 
+
+    public String getCurrency(JSONObject countryObj) {
+        JSONObject currencies = (JSONObject) countryObj.get("currencies");
+        if (currencies == null || currencies.isEmpty()) return "Currency: N/A";
+
+        String code = (String) currencies.keySet().iterator().next();
+        JSONObject cur = (JSONObject) currencies.get(code);
+
+        String name = (cur != null && cur.get("name") != null) ? cur.get("name").toString() : code;
+        String symbol = (cur != null && cur.get("symbol") != null) ? cur.get("symbol").toString() : "";
+
+        if (!symbol.isEmpty()) return "Currency: " + name + " (" + symbol + ")";
+        return "Currency: " + name;
+    }
+
     public ImageIcon downloadFlag(String pngUrl) throws Exception {
         URL url = new URL(pngUrl);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -68,12 +82,18 @@ public class ReadJson {
         JButton search;
         JLabel imageLabel;
 
+        JLabel currencyLabel;
+
         public Viewer() {
-            setTitle("Rest Countries Flag Viewer");
-            setSize(500, 350);
+            setTitle("Rest Countries Flag + Currency Viewer");
+            setSize(520, 380);
             setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             setLocationRelativeTo(null);
             setLayout(new BorderLayout(10, 10));
+
+            currencyLabel = new JLabel(" ", SwingConstants.CENTER);
+            currencyLabel.setFont(new Font("SansSerif", Font.PLAIN, 14));
+            add(currencyLabel, BorderLayout.NORTH);
 
             imageLabel = new JLabel(
                     "Type a country name (Korea, Brazil, etc.)",
@@ -99,16 +119,20 @@ public class ReadJson {
                     imageLabel.setIcon(flag);
                     imageLabel.setText("");
 
+                    currencyLabel.setText(getCurrency(country));
+
                 } catch (Exception ex) {
                     imageLabel.setIcon(null);
                     imageLabel.setText("Error: " + ex.getMessage());
+                    currencyLabel.setText(" ");
                 }
             });
         }
     }
 }
 
-//my plan: add the currency (already found the website)
+
+
 
 //AI for cartoon: https://app.kira.art/generator/36fa51fb-91c4-47cc-92d8-3262a78da6de
 
