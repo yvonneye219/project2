@@ -108,6 +108,8 @@ public class ReadJson {
     }
 }
 
+//my plan: add the currency (already found the website)
+
 //AI for cartoon: https://app.kira.art/generator/36fa51fb-91c4-47cc-92d8-3262a78da6de
 
 
