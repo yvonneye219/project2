@@ -2,12 +2,15 @@ import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+
+import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.UUID;
 
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
@@ -20,10 +23,12 @@ public class ReadJson {
         SwingUtilities.invokeLater(() -> app.new Viewer().setVisible(true));
     }
 
+    // ========= REST COUNTRIES =========
+
     public JSONObject getCountryObject(String countryName) throws Exception {
         String encodedName = URLEncoder.encode(countryName.trim(), "UTF-8");
-
         URL url = new URL("https://restcountries.com/v3.1/name/" + encodedName);
+
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("GET");
         conn.setRequestProperty("Accept", "application/json");
@@ -33,11 +38,10 @@ public class ReadJson {
         }
 
         StringBuilder jsonText = new StringBuilder();
-        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
         String line;
-        while ((line = br.readLine()) != null) {
-            jsonText.append(line);
-        }
+        while ((line = br.readLine()) != null) jsonText.append(line);
+        br.close();
         conn.disconnect();
 
         JSONArray arr = (JSONArray) new JSONParser().parse(jsonText.toString());
@@ -48,7 +52,6 @@ public class ReadJson {
         JSONObject flags = (JSONObject) countryObj.get("flags");
         return (String) flags.get("png");
     }
-
 
     public String getCurrency(JSONObject countryObj) {
         JSONObject currencies = (JSONObject) countryObj.get("currencies");
@@ -64,12 +67,15 @@ public class ReadJson {
         return "Currency: " + name;
     }
 
-    private String getOpenAIApiKey() {
-        String key = System.getenv("OPENAI_API_KEY");
-        if (key == null || key.trim().isEmpty()) {
-            throw new RuntimeException("Missing OPENAI_API_KEY environment variable.");
-        }
-        return key.trim();
+    public String getCapital(JSONObject countryObj) {
+        JSONArray cap = (JSONArray) countryObj.get("capital");
+        if (cap == null || cap.isEmpty()) return "Capital: N/A";
+        return "Capital: " + cap.get(0).toString();
+    }
+
+    public String getRegion(JSONObject countryObj) {
+        Object r = countryObj.get("region");
+        return "Region: " + (r == null ? "N/A" : r.toString());
     }
 
     public ImageIcon downloadFlag(String pngUrl) throws Exception {
@@ -79,71 +85,174 @@ public class ReadJson {
 
         InputStream in = conn.getInputStream();
         BufferedImage img = ImageIO.read(in);
+        in.close();
         conn.disconnect();
 
         return new ImageIcon(img);
     }
 
+    public byte[] downloadBytes(String fileUrl) throws Exception {
+        URL url = new URL(fileUrl);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("GET");
+
+        InputStream in = conn.getInputStream();
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = in.read(buf)) != -1) baos.write(buf, 0, n);
+
+        in.close();
+        conn.disconnect();
+        return baos.toByteArray();
+    }
+
+
+
+    private String getOpenAIApiKey() {
+        return "...";
+    }
+
+    public ImageIcon cartoonizeFlag(byte[] flagPngBytes, String prompt) throws Exception {
+        String boundary = "----JavaBoundary" + UUID.randomUUID().toString().replace("-", "");
+        URL url = new URL("https://api.openai.com/v1/images/edits");
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+        conn.setRequestMethod("POST");
+        conn.setDoOutput(true);
+        conn.setRequestProperty("Authorization", "Bearer " + getOpenAIApiKey());
+        conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+
+        OutputStream out = conn.getOutputStream();
+
+        writeFormField(out, boundary, "model", "gpt-image-1");
+        writeFormField(out, boundary, "prompt", prompt);
+        writeFileField(out, boundary, "image", "flag.png", "image/png", flagPngBytes);
+        writeFormField(out, boundary, "size", "1024x1024");
+
+        out.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+        out.flush();
+        out.close();
+
+        int code = conn.getResponseCode();
+        InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
+
+        StringBuilder responseText = new StringBuilder();
+        BufferedReader br = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
+        String line;
+        while ((line = br.readLine()) != null) responseText.append(line);
+        br.close();
+        conn.disconnect();
+
+        if (code < 200 || code >= 300) {
+            throw new RuntimeException("OpenAI API error (" + code + "): " + responseText.toString());
+        }
+
+        JSONObject json = (JSONObject) new JSONParser().parse(responseText.toString());
+        JSONArray data = (JSONArray) json.get("data");
+
+        JSONObject first = (JSONObject) data.get(0);
+        String b64 = (String) first.get("b64_json");
+
+        byte[] imageBytes = Base64.getDecoder().decode(b64);
+        BufferedImage img = ImageIO.read(new ByteArrayInputStream(imageBytes));
+        return new ImageIcon(img);
+    }
+
+    private void writeFormField(OutputStream out, String boundary, String name, String value) throws IOException {
+        String part =
+                "--" + boundary + "\r\n" +
+                        "Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n" +
+                        value + "\r\n";
+        out.write(part.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void writeFileField(OutputStream out, String boundary, String name, String filename, String contentType, byte[] fileBytes) throws IOException {
+        String header =
+                "--" + boundary + "\r\n" +
+                        "Content-Disposition: form-data; name=\"" + name + "\"; filename=\"" + filename + "\"\r\n" +
+                        "Content-Type: " + contentType + "\r\n\r\n";
+        out.write(header.getBytes(StandardCharsets.UTF_8));
+        out.write(fileBytes);
+        out.write("\r\n".getBytes(StandardCharsets.UTF_8));
+    }
+
+    // ========= UI =========
+
     public class Viewer extends JFrame {
 
         JTextField input;
         JButton search;
-        JLabel imageLabel;
+        JButton cartoonize;
 
-        JLabel currencyLabel;
+        JLabel flagLabel;
+        JLabel aiLabel;
+        JLabel infoLabel;
+
+        JSONObject lastCountry = null;
+        byte[] lastFlagBytes = null;
 
         public Viewer() {
-            setTitle("Rest Countries Flag + Currency Viewer");
-            setSize(520, 380);
+            setTitle("Country Flag → AI Cartoon Character");
+            setSize(900, 520);
             setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             setLocationRelativeTo(null);
             setLayout(new BorderLayout(10, 10));
 
-            currencyLabel = new JLabel(" ", SwingConstants.CENTER);
-            currencyLabel.setFont(new Font("SansSerif", Font.PLAIN, 14));
-            add(currencyLabel, BorderLayout.NORTH);
+            infoLabel = new JLabel(" ", SwingConstants.CENTER);
+            add(infoLabel, BorderLayout.NORTH);
 
-            imageLabel = new JLabel(
-                    "Type a country name (Korea, Brazil, etc.)",
-                    SwingConstants.CENTER
-            );
-            add(imageLabel, BorderLayout.CENTER);
+            JPanel center = new JPanel(new GridLayout(1, 2, 10, 10));
+            flagLabel = new JLabel("Original Flag", SwingConstants.CENTER);
+            aiLabel = new JLabel("AI Cartoon Character", SwingConstants.CENTER);
+            center.add(flagLabel);
+            center.add(aiLabel);
+            add(center, BorderLayout.CENTER);
 
-            JPanel bottom = new JPanel(new BorderLayout(5, 5));
+            JPanel bottom = new JPanel(new GridLayout(1, 3, 8, 8));
             input = new JTextField();
-            input.setBorder(BorderFactory.createTitledBorder("Country Name"));
-            bottom.add(input, BorderLayout.CENTER);
-
-            search = new JButton("Search");
-            bottom.add(search, BorderLayout.EAST);
+            search = new JButton("Load Flag + Info");
+            cartoonize = new JButton("Cartoonize Flag (AI)");
+            bottom.add(input);
+            bottom.add(search);
+            bottom.add(cartoonize);
             add(bottom, BorderLayout.SOUTH);
 
-            search.addActionListener(e -> {
-                try {
-                    JSONObject country = getCountryObject(input.getText());
-                    String pngUrl = getFlagPngUrl(country);
-                    ImageIcon flag = downloadFlag(pngUrl);
+            search.addActionListener(e -> loadCountry());
+            cartoonize.addActionListener(e -> runCartoonize());
+        }
 
-                    imageLabel.setIcon(flag);
-                    imageLabel.setText("");
+        private void loadCountry() {
+            try {
+                lastCountry = getCountryObject(input.getText());
+                String pngUrl = getFlagPngUrl(lastCountry);
+                lastFlagBytes = downloadBytes(pngUrl);
 
-                    currencyLabel.setText(getCurrency(country));
+                ImageIcon flag = downloadFlag(pngUrl);
+                flagLabel.setIcon(flag);
+                flagLabel.setText("");
 
-                } catch (Exception ex) {
-                    imageLabel.setIcon(null);
-                    imageLabel.setText("Error: " + ex.getMessage());
-                    currencyLabel.setText(" ");
-                }
-            });
+                String info = getCurrency(lastCountry) + " | " + getCapital(lastCountry) + " | " + getRegion(lastCountry);
+                infoLabel.setText(info);
+
+            } catch (Exception ex) {
+                flagLabel.setText("Error: " + ex.getMessage());
+            }
+        }
+
+        private void runCartoonize() {
+            try {
+                String prompt =
+                        "Turn this country's flag into a cute cartoon character mascot using its colors and patterns.";
+
+                ImageIcon img = cartoonizeFlag(lastFlagBytes, prompt);
+                aiLabel.setIcon(img);
+                aiLabel.setText("");
+
+            } catch (Exception ex) {
+                aiLabel.setText("AI Error: " + ex.getMessage());
+            }
         }
     }
-
-
 }
-
-
-
-
-//AI for cartoon: https://app.kira.art/generator/36fa51fb-91c4-47cc-92d8-3262a78da6de
-
-
