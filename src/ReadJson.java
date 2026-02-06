@@ -64,6 +64,14 @@ public class ReadJson {
         return "Currency: " + name;
     }
 
+    private String getOpenAIApiKey() {
+        String key = System.getenv("OPENAI_API_KEY");
+        if (key == null || key.trim().isEmpty()) {
+            throw new RuntimeException("Missing OPENAI_API_KEY environment variable.");
+        }
+        return key.trim();
+    }
+
     public ImageIcon downloadFlag(String pngUrl) throws Exception {
         URL url = new URL(pngUrl);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -129,6 +137,8 @@ public class ReadJson {
             });
         }
     }
+
+
 }
 
 
