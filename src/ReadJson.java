@@ -245,7 +245,7 @@ public class ReadJson {
         private void runCartoonize() {
             try {
                 String prompt =
-                        "Turn this country's flag into a cute cartoon character mascot using its colors and patterns.";
+                        "Turn this country's flag into a cartoon character mascot using its colors and patterns.";
 
                 ImageIcon img = cartoonizeFlag(lastFlagBytes, prompt);
                 aiLabel.setIcon(img);
