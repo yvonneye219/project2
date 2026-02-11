@@ -115,6 +115,8 @@ public class ReadJson {
     }
 
     public ImageIcon cartoonizeFlag(byte[] flagPngBytes, String prompt) throws Exception {
+        if (flagPngBytes == null) throw new IllegalStateException("Load a country flag first!");
+
         String boundary = "----JavaBoundary" + UUID.randomUUID().toString().replace("-", "");
         URL url = new URL("https://api.openai.com/v1/images/edits");
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -126,9 +128,9 @@ public class ReadJson {
 
         OutputStream out = conn.getOutputStream();
 
-        writeFormField(out, boundary, "model", "gpt-image-1");
+        writeFormField(out, boundary, "model", "gpt-image-1.5");   // or gpt-image-1
         writeFormField(out, boundary, "prompt", prompt);
-        writeFileField(out, boundary, "image", "flag.png", "image/png", flagPngBytes);
+        writeFileField(out, boundary, "image[]", "flag.png", "image/png", flagPngBytes); // IMPORTANT: image[]
         writeFormField(out, boundary, "size", "1024x1024");
 
         out.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
@@ -146,16 +148,16 @@ public class ReadJson {
         conn.disconnect();
 
         if (code < 200 || code >= 300) {
-            throw new RuntimeException("OpenAI API error (" + code + "): " + responseText.toString());
+            throw new RuntimeException("OpenAI API error (" + code + "): " + responseText);
         }
 
         JSONObject json = (JSONObject) new JSONParser().parse(responseText.toString());
         JSONArray data = (JSONArray) json.get("data");
-
         JSONObject first = (JSONObject) data.get(0);
-        String b64 = (String) first.get("b64_json");
 
+        String b64 = (String) first.get("b64_json");
         byte[] imageBytes = Base64.getDecoder().decode(b64);
+
         BufferedImage img = ImageIO.read(new ByteArrayInputStream(imageBytes));
         return new ImageIcon(img);
     }
@@ -178,7 +180,6 @@ public class ReadJson {
         out.write("\r\n".getBytes(StandardCharsets.UTF_8));
     }
 
-    // ========= UI =========
 
     public class Viewer extends JFrame {
 
