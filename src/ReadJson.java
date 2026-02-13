@@ -134,7 +134,7 @@ public class ReadJson {
 
         OutputStream out = conn.getOutputStream();
 
-        writeFormField(out, boundary, "model", "gpt-image-1");
+        writeFormField(out, boundary, "model", "gpt-image-1.5");   // or gpt-image-1
         writeFormField(out, boundary, "prompt", prompt);
         writeFileField(out, boundary, "image[]", "flag.png", "image/png", flagPngBytes); // IMPORTANT: image[]
         writeFormField(out, boundary, "size", "1024x1024");
