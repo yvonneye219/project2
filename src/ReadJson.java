@@ -23,22 +23,24 @@ public class ReadJson {
         SwingUtilities.invokeLater(() -> app.new Viewer().setVisible(true));
     }
 
-    // ========= REST COUNTRIES =========
+  //Start the app and show the interface
 
     public JSONObject getCountryObject(String countryName) throws Exception {
-        String encodedName = URLEncoder.encode(countryName.trim(), "UTF-8");
+        String encodedName = URLEncoder.encode(countryName.trim(), "UTF-8"); //Removes extra spaces, and converts the name into a URL-safe format.
         URL url = new URL("https://restcountries.com/v3.1/name/" + encodedName);
+//Ask the internet for this country’s data and return it as a usable object.
 
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection(); //Opens a connection to the URL and prepares to send a request.
         conn.setRequestMethod("GET");
-        conn.setRequestProperty("Accept", "application/json");
+        conn.setRequestProperty("Accept", "application/json");//Basically telling the server "Please send the data back as JSON"
 
         if (conn.getResponseCode() != 200) {
             throw new RuntimeException("Country not found");
-        }
+        }//The program checks the HTTP status code. 200 means success. Anything else means an error.
 
-        StringBuilder jsonText = new StringBuilder();
+        StringBuilder jsonText = new StringBuilder();//This creates a container to hold the incoming JSON text.
         BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8));
+        //Set up a tool to read the server’s response as text
         String line;
         while ((line = br.readLine()) != null) jsonText.append(line);
         br.close();
@@ -111,7 +113,11 @@ public class ReadJson {
 
 
     private String getOpenAIApiKey() {
-        return "...";
+        String key = System.getenv("OPENAI_API_KEY");
+        if (key == null || key.trim().isEmpty()) {
+            throw new IllegalStateException("OPENAI_API_KEY is not set.");
+        }
+        return key.trim();
     }
 
     public ImageIcon cartoonizeFlag(byte[] flagPngBytes, String prompt) throws Exception {
@@ -128,7 +134,7 @@ public class ReadJson {
 
         OutputStream out = conn.getOutputStream();
 
-        writeFormField(out, boundary, "model", "gpt-image-1.5");   // or gpt-image-1
+        writeFormField(out, boundary, "model", "gpt-image-1");
         writeFormField(out, boundary, "prompt", prompt);
         writeFileField(out, boundary, "image[]", "flag.png", "image/png", flagPngBytes); // IMPORTANT: image[]
         writeFormField(out, boundary, "size", "1024x1024");
@@ -243,17 +249,43 @@ public class ReadJson {
         }
 
         private void runCartoonize() {
-            try {
-                String prompt =
-                        "Turn this country's flag into a cartoon character mascot using its colors and patterns.";
+            aiLabel.setText("Generating...");
+            aiLabel.setIcon(null);
 
-                ImageIcon img = cartoonizeFlag(lastFlagBytes, prompt);
-                aiLabel.setIcon(img);
-                aiLabel.setText("");
+            new Thread(() -> {
+                try {
+                    String prompt =
+                            "Turn this country's flag into a cartoon character mascot using its colors and patterns.";
 
-            } catch (Exception ex) {
-                aiLabel.setText("AI Error: " + ex.getMessage());
-            }
+                    ImageIcon img = cartoonizeFlag(lastFlagBytes, prompt);
+
+                    SwingUtilities.invokeLater(() -> {
+                        aiLabel.setIcon(scaleToLabel(img, aiLabel));
+                        aiLabel.setText("");
+                    });
+
+                } catch (Exception ex) {
+                    SwingUtilities.invokeLater(() ->
+                            aiLabel.setText("AI Error: " + ex.getMessage())
+                    );
+                }
+            }).start();
         }
+        }
+
+    private ImageIcon scaleToLabel(ImageIcon icon, JLabel label) {
+        if (icon == null) return null;
+
+        int w = label.getWidth();
+        int h = label.getHeight();
+
+        if (w <= 0 || h <= 0) {
+            w = 400;
+            h = 400;
+        }
+
+        Image scaled = icon.getImage().getScaledInstance(w, h, Image.SCALE_SMOOTH);
+        return new ImageIcon(scaled);
     }
-}
+    }
+
